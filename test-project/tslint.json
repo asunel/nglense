@@ -1,0 +1,12 @@
+{
+    "defaultSeverity": "error",
+    "extends": [
+        "tslint:recommended"
+    ],
+    "jsRules": {},
+    "rules": {
+      "subscribe-with-takeUntil": true,
+      "ng-on-destroy": true
+    },
+    "rulesDirectory": ["../ng-lense-rules"]
+}
