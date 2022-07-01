@@ -11,32 +11,49 @@ export class Rule extends Lint.Rules.AbstractRule {
         type: 'maintainability',
         typescriptOnly: false
     }
+
     public static FAILURE_STRING = 'Class name must have the ngOnDestroy hook';
+    
+    public static ALLOWED_NODES = new Set<ts.SyntaxKind>([
+    ]);
+
     public apply(sourceFile: ts.SourceFile): Lint.RuleFailure[] {
-        return this.applyWithWalker(new NgOnDestroyWalker(sourceFile, this.getOptions(), new Helper()));
+        return this.applyWithWalker(new NgOnDestroyWalker(sourceFile, Rule.metadata.ruleName,  new Set(this.ruleArguments.map(String))));
     }
 }
-class NgOnDestroyWalker extends Lint.RuleWalker {
-    helper: Helper
-    constructor(sourceFile: ts.SourceFile, options: Lint.IOptions, helper: Helper) {
-        super(sourceFile, options);
-        this.helper = helper;
+
+class NgOnDestroyWalker extends Lint.AbstractWalker<Set<string>> {
+    helper: Helper = new Helper();
+    
+    public walk(sourceFile: ts.SourceFile) {
+        const cb = (node: ts.Node): void => {
+            if (ts.isClassDeclaration(node)) {
+                this.checkNgOnDestroy(node);
+            } else {
+                return ts.forEachChild(node, cb);
+            }
+        };
+
+        return ts.forEachChild(sourceFile, cb);
     }
 
-    visitClassDeclaration(node: ts.ClassDeclaration) {
-        this.validateMethods(node)
+    isNamedClass(node: ts.Node): node is (ts.ClassDeclaration & { name: ts.Identifier }) {
+        return (node.kind === ts.SyntaxKind.ClassDeclaration) && ((node as ts.ClassDeclaration).name != null);
     }
-    
-    validateMethods(node: ts.ClassDeclaration) {
+
+    checkNgOnDestroy(node: ts.ClassDeclaration) {
         const methods = node.members.filter(ts.isMethodDeclaration);
         if (!this.helper.hasNgOnDestroyMethod(node) && this.helper.isComponent(node)) {
             const lastMethod = methods[methods.length - 1];
             if (lastMethod) {
                 // let destroyMethod = this.helper.createNgOnDestroyMethod();
-                const fix = new Lint.Replacement(lastMethod.getEnd(), 0, `\n\n  ngOnDestroy() {\n\n  }`);
-                this.addFailureAtNode(node, Rule.FAILURE_STRING, fix);
+                const fix = new Lint.Replacement(lastMethod.getEnd(), 0, `\n\n\tngOnDestroy() {\n\t}`);
+
+                if (this.isNamedClass(node)) {
+                    // const className = (node.name as ts.Identifier).text;
+                    this.addFailureAtNode(node.name, Rule.FAILURE_STRING, fix);
+                }
             }
         }
     }
-
 }
