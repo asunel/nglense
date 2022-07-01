@@ -18,13 +18,18 @@ export class Rule extends Lint.Rules.AbstractRule {
     ]);
 
     public apply(sourceFile: ts.SourceFile): Lint.RuleFailure[] {
-        return this.applyWithWalker(new NgOnDestroyWalker(sourceFile, Rule.metadata.ruleName,  new Set(this.ruleArguments.map(String))));
+        return this.applyWithWalker(new NgOnDestroyWalker(sourceFile, Rule.metadata.ruleName,  new Set(this.ruleArguments.map(String)), new Helper()));
     }
 }
 
 class NgOnDestroyWalker extends Lint.AbstractWalker<Set<string>> {
-    helper: Helper = new Helper();
+    helper: Helper;
     
+    constructor (sourceFile: ts.SourceFile, ruleName: string, options: any, helper: Helper) {
+        super(sourceFile, ruleName, options);
+        this.helper = helper;
+    }
+
     public walk(sourceFile: ts.SourceFile) {
         const cb = (node: ts.Node): void => {
             if (ts.isClassDeclaration(node)) {
