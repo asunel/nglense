@@ -51,12 +51,24 @@ class NgOnDestroyWalker extends Lint.AbstractWalker<Set<string>> {
         if (!this.helper.hasNgOnDestroyMethod(node) && this.helper.isComponent(node)) {
             const lastMethod = methods[methods.length - 1];
             if (lastMethod) {
-                // let destroyMethod = this.helper.createNgOnDestroyMethod();
-                const fix = new Lint.Replacement(lastMethod.getEnd(), 0, `\n\n\tngOnDestroy() {\n\t}`);
-
+                const fixes = [new Lint.Replacement(lastMethod.getEnd(), 0, `\n\n\tngOnDestroy() {\n\t}`)];
+                const implementedTypes = node.heritageClauses?.[0].types;
+                const isOnDestroyImplemented = implementedTypes?.find(a => (a.expression as any).escapedText === 'OnDestroy');
+                if (!isOnDestroyImplemented && implementedTypes) {
+                    const findImportDeclarationStatements = node.getSourceFile().statements.filter(ts.isImportDeclaration);
+                    if (findImportDeclarationStatements) {
+                        for (const importStatement of findImportDeclarationStatements) {
+                            if(importStatement?.moduleSpecifier?.getText().includes('angular/core') && importStatement.importClause) {
+                                const importOnDestroy = new Lint.Replacement(importStatement.importClause?.getEnd() - 2, 0, ', OnDestroy');
+                                fixes.push(importOnDestroy);
+                            }
+                        }
+                    }
+                    const implementOnDestroy = new Lint.Replacement(implementedTypes.end, 0, ', OnDestroy');
+                    fixes.push(implementOnDestroy);
+                }
                 if (this.isNamedClass(node)) {
-                    // const className = (node.name as ts.Identifier).text;
-                    this.addFailureAtNode(node.name, Rule.FAILURE_STRING, fix);
+                    this.addFailureAtNode(node.name, Rule.FAILURE_STRING, fixes);
                 }
             }
         }
