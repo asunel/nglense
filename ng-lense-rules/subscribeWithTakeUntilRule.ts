@@ -44,7 +44,6 @@ class SubscribeWithTakeUntilWalker extends Lint.AbstractWalker<Set<string>> {
 
     checkSubscribeWithTakeUntil(node: ts.ClassDeclaration) {
         const classMethods = node.members.filter(ts.isMethodDeclaration);
-        const classProperties = node.members.filter(ts.isPropertyDeclaration);
 
         let subscribeStatements: ts.Statement[] = []
         if (classMethods?.length) {
@@ -57,59 +56,47 @@ class SubscribeWithTakeUntilWalker extends Lint.AbstractWalker<Set<string>> {
             if (subscribeStatements.length > 0) {
                 for (const statement of subscribeStatements) {
                     const statementText = statement.getText();
+                    const fix: Lint.Replacement[] = [];
                     if (statementText.match(/takeUntil\(/g)) {
-                        // TODO: ;
+                        let argNodes;
+                        const identifierFn = (ctxNode) => {
+                            if(ctxNode.getText().startsWith('takeUntil') && ctxNode.getText().endsWith(')')) {
+                                if(ctxNode?.arguments?.length) {
+                                    argNodes = ctxNode.arguments;
+                                }
+                            }
+                            return ts.forEachChild(ctxNode, identifierFn);
+                        }
+                        ts.forEachChild(statement, identifierFn);
+                        const nextCompleteSubjectFix = this.helper.nextCompleteInDestroyMethod(node, argNodes);
+                        const importFix = this.helper.importTakeUntil(node);
+                        if(importFix) {
+                            fix.push(importFix);
+                        }
+                        const componentDestroyedProperty = this.helper.declareOnDestroySubjectProperty(node);
+                        if(componentDestroyedProperty) {
+                            fix.push(componentDestroyedProperty);
+                        }
+                        if(nextCompleteSubjectFix.filter(_ => _).length > 0) {
+                            fix.push(...nextCompleteSubjectFix);
+                            this.addFailureAtNode(statement, Rule.FAILURE_STRING, fix);
+                        }
                     } else {
-                        const fix: Lint.Replacement[] = [];
-                        const findAllIdentifiers = (ctxNode) => {
-                            const identifiers: ts.Identifier[] = [];
-                            const findIdentifier = (node) => {
-                                if (ts.isIdentifier(node)) {
-                                    identifiers.push(node);
-                                }
-                                return ts.forEachChild(node, findIdentifier);
-                            }
-                            ts.forEachChild(ctxNode, findIdentifier);
-                            return identifiers;
+                        const pipeFix = this.helper.getPipeFix(statement);
+                        if(pipeFix) {
+                            fix.push(pipeFix);
                         }
-                        const allStatementIdentifiers = ts.forEachChild(statement, findAllIdentifiers);
-
-                        if (allStatementIdentifiers && allStatementIdentifiers?.length > 0) {
-                            for (const identifier of allStatementIdentifiers) {
-                                if (identifier && identifier.getText() === 'subscribe') {
-                                    const addTakeUntilWithPipeArgument = new Lint.Replacement(identifier.getStart() - 1, 0, `.pipe(takeUntil(this.componentDestroyed$))`);
-                                    fix.push(addTakeUntilWithPipeArgument);                                    
-                                }
-                            }
+                        const importFix = this.helper.importTakeUntil(node);
+                        if(importFix) {
+                            fix.push(importFix);
                         }
-                        // takeUntilImport => 'rxjs/operators'
-                        let implementedTypes = node.heritageClauses?.[0].types;
-                        let iTakeUntilImported = implementedTypes?.find(a => (a.expression as any).escapedText === 'takeUntil');
-                        if (!iTakeUntilImported && implementedTypes) {
-                            const findImportDeclarationStatements = node.getSourceFile().statements.filter(ts.isImportDeclaration);
-                            if (findImportDeclarationStatements) {
-                                let importTakeUntilFix;
-                                for (const importStatement of findImportDeclarationStatements) {
-                                    if(importStatement?.moduleSpecifier?.getText().includes('rxjs/operators') && importStatement.importClause) {
-                                        importTakeUntilFix = new Lint.Replacement(importStatement.importClause?.getEnd() - 2, 0, ', takeUntil');
-                                    }
-                                }
-                                if(!importTakeUntilFix) {
-                                    const lastImport = findImportDeclarationStatements[findImportDeclarationStatements.length - 1];
-                                    importTakeUntilFix = new Lint.Replacement(lastImport.getEnd(), 0, `\nimport { takeUntil} from 'rxjs/operators';`);
-                                }
-                                fix.push(importTakeUntilFix);
-                            }
+                        const componentDestroyedProperty = this.helper.declareOnDestroySubjectProperty(node);
+                        if(componentDestroyedProperty) {
+                            fix.push(componentDestroyedProperty);
                         }
-                        if (classProperties?.filter(property => property.getText().match(/componentDestroyed/g)).length === 0) {
-                            const privateProperty = new Lint.Replacement(classProperties[classProperties.length - 1].end, 0, '\n\n  private componentDestroyed$ = new Subject();');
-                            fix.push(privateProperty);
-                        }
-                        const ngOnDestroyMethod = classMethods.find(method => method.getText().match(/ngOnDestroy/g));
-                        let bodyStartPostion = ngOnDestroyMethod?.body?.getStart();
-                        if (bodyStartPostion) {
-                            const nextCompleteSubjectFix = new Lint.Replacement(bodyStartPostion + 1, 0, '\n    this.componentDestroyed$.next();\n    this.componentDestroyed$.complete();\n  ');
-                            fix.push(nextCompleteSubjectFix);
+                        const nextCompleteSubjectFix = this.helper.nextCompleteInDestroyMethod(node);
+                        if(nextCompleteSubjectFix.filter(_ => _).length > 0) {
+                            fix.push(...nextCompleteSubjectFix);
                         }
                         this.addFailureAtNode(statement, Rule.FAILURE_STRING, fix);
                     }
